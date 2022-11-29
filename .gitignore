@@ -254,3 +254,5 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+coco_stuff_yolo/
+yolov5-rt-stack/

@@ -12,16 +12,17 @@ import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-CLASSES=  ['sli_side_turn_light', 'tyre', 'alloy_wheel', 'hli_head_light', 'hood',
-    'fwi_windshield', 'flp_front_license_plate', 'door', 'mirror', 'handle',
-    'qpa_quarter_panel', 'fender', 'grille', 'fbu_front_bumper', 'rocker_panel', 'rbu_rear_bumper',
-    'pillar', 'roof', 'blp_back_license_plate', 'window', 'rwi_rear_windshield',
-    'tail_gate', 'tli_tail_light', 'fbe_fog_light_bezel', 'fli_fog_light', 'fuel_tank_door',
-    'lli_low_bumper_tail_light'] 
+# CLASSES=  ['sli_side_turn_light', 'tyre', 'alloy_wheel', 'hli_head_light', 'hood',
+#     'fwi_windshield', 'flp_front_license_plate', 'door', 'mirror', 'handle',
+#     'qpa_quarter_panel', 'fender', 'grille', 'fbu_front_bumper', 'rocker_panel', 'rbu_rear_bumper',
+#     'pillar', 'roof', 'blp_back_license_plate', 'window', 'rwi_rear_windshield',
+#     'tail_gate', 'tli_tail_light', 'fbe_fog_light_bezel', 'fli_fog_light', 'fuel_tank_door',
+#     'lli_low_bumper_tail_light'] 
+CLASSES = ['r_sli_side_turn_light', 'l_sli_side_turn_light', 'r_tyre', 'l_tyre', 'r_alloy_wheel', 'l_alloy_wheel', 'r_hli_head_light', 'l_hli_head_light', 'hood', 'fwi_windshield', 'flp_front_license_plate', 'r_door', 'l_door', 'r_mirror', 'l_mirror', 'handle', 'r_qpa_quarter_panel', 'l_qpa_quarter_panel', 'r_fender', 'l_fender', 'grille', 'fbu_front_bumper', 'r_rocker_panel', 'l_rocker_panel', 'rbu_rear_bumper', 'r_pillar', 'l_pillar', 'roof', 'blp_back_license_plate', 'r_window', 'l_window', 'rwi_rear_windshield', 'tail_gate', 'r_tli_tail_light', 'l_tli_tail_light', 'r_fbe_fog_light_bezel', 'l_fbe_fog_light_bezel', 'r_fli_fog_light', 'l_fli_fog_light', 'fuel_tank_door', 'lli_low_bumper_tail_light', 'exhaust']
 
 device = torch.device('cpu')
 # 'yolov5s.pt' is downloaded from https://github.com/ultralytics/yolov5/releases/download/v5.0/yolov5s.pt
-ckpt_path_from_ultralytics = "runs/train/carpart_light_v3/weights/best.pt"
+ckpt_path_from_ultralytics = "runs/train/carpart_js2/weights/best.pt"
 model = YOLOv5.load_from_yolov5(ckpt_path_from_ultralytics, score_thresh=0.4,nms_thresh=0.3)
 
 debug_torch = False
@@ -58,7 +59,7 @@ images = [img_one]
 onnx_export = True
 
 if onnx_export :
-    export_onnx_name = 'demo_cp_light_v3.onnx'
+    export_onnx_name = 'carpart-tfjs.onnx'
 
     torch.onnx.export(
         model,
@@ -83,6 +84,8 @@ def to_numpy(tensor):
         return tensor.cpu().numpy()
 
 onnx_debug = True
+
+# export_onnx_name = 'runs/train/carpart_js2/weights/best.onnx'
 
 if onnx_debug:
     inputs = list(map(to_numpy, images))
@@ -109,7 +112,7 @@ if onnx_debug:
         img = cv2.putText(img,str(box_class)+'|'+str(score),(box[0],box[3]),cv2.FONT_HERSHEY_SIMPLEX,1,(255,0,0),1,cv2.LINE_AA)
     #img = cv2.rectangle(img,(61,224),(350,415),(255,0,0),2)
     #img = cv2.rectangle(img,(140,66),(356,345),(255,0,0),2)
-    cv2.imwrite('onnx_debug_v3.jpg',img)
+    cv2.imwrite('onnx_debug_cp.jpg',img)
 
 
 

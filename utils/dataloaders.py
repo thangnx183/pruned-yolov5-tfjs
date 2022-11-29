@@ -426,6 +426,13 @@ def img2label_paths(img_paths):
     # Define label paths as a function of image paths
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
+    # return [labeltext_path[:labeltext_path.rfind('.txt')+p[p.rfind('/'):p.rfind('.')]+'.txt'] for p in img_paths]
+
+def img2label_paths_v2(img_paths,labeltext_path):
+    # Define label paths as a function of image paths
+    # sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
+    # return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
+    return [labeltext_path[:labeltext_path.rfind('.txt')]+p[p.rfind('/'):p.rfind('.')]+'.txt' for p in img_paths]
 
 
 class LoadImagesAndLabels(Dataset):
@@ -480,7 +487,8 @@ class LoadImagesAndLabels(Dataset):
             raise Exception(f'{prefix}Error loading data from {path}: {e}\n{HELP_URL}') from e
 
         # Check cache
-        self.label_files = img2label_paths(self.im_files)  # labels
+        # print('debug : ',self.im_files[0],self.path)
+        self.label_files = img2label_paths_v2(self.im_files,self.path)  # labels
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
         try:
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
@@ -506,7 +514,7 @@ class LoadImagesAndLabels(Dataset):
         self.labels = list(labels)
         self.shapes = np.array(shapes)
         self.im_files = list(cache.keys())  # update
-        self.label_files = img2label_paths(cache.keys())  # update
+        self.label_files = img2label_paths_v2(cache.keys(),self.path)  # update
 
         # Filter images
         if min_items:
