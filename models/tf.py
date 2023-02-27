@@ -68,6 +68,13 @@ class TFConv(keras.layers.Layer):
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True, w=None):
         # ch_in, ch_out, weights, kernel, stride, padding, groups
         super().__init__()
+        # print('debug : ',c1,c2,list(w.conv.weight.shape)[:2])
+        self.new_shape = []
+        if w is not None :
+            self.new_shape = list(w.conv.weight.shape)
+            c1 = self.new_shape[1]
+            c2=self.new_shape[0]
+        
         assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
         # TensorFlow convolution padding is inconsistent with PyTorch (e.g. k=3 s=2 'SAME' padding)
         # see https://stackoverflow.com/questions/52975843/comparing-conv2d-with-padding-between-tensorflow-and-pytorch
@@ -84,6 +91,7 @@ class TFConv(keras.layers.Layer):
         self.act = activations(w.act) if act else tf.identity
 
     def call(self, inputs):
+        # print('debug conv inference : ',inputs.shape,self.new_shape)
         return self.act(self.bn(self.conv(inputs)))
 
 
@@ -91,6 +99,7 @@ class TFDWConv(keras.layers.Layer):
     # Depthwise convolution
     def __init__(self, c1, c2, k=1, s=1, p=None, act=True, w=None):
         # ch_in, ch_out, weights, kernel, stride, padding, groups
+        
         super().__init__()
         assert c2 % c1 == 0, f'TFDWConv() output={c2} must be a multiple of input={c1} channels'
         conv = keras.layers.DepthwiseConv2D(
@@ -175,6 +184,10 @@ class TFConv2d(keras.layers.Layer):
     # Substitution for PyTorch nn.Conv2D
     def __init__(self, c1, c2, k, s=1, g=1, bias=True, w=None):
         super().__init__()
+        # print('debug conv2d ',c1,c2,w.weight.shape)
+        if w is not None:
+            new_shape = list(w.weight.shape)
+            c1 = new_shape[1]
         assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
         self.conv = keras.layers.Conv2D(filters=c2,
                                         kernel_size=k,
@@ -221,6 +234,7 @@ class TFC3(keras.layers.Layer):
         self.m = keras.Sequential([TFBottleneck(c_, c_, shortcut, g, e=1.0, w=w.m[j]) for j in range(n)])
 
     def call(self, inputs):
+        # print('debug c3 inferece : ',inputs.shape)
         return self.cv3(tf.concat((self.m(self.cv1(inputs)), self.cv2(inputs)), axis=3))
 
 
@@ -371,12 +385,13 @@ class TFConcat(keras.layers.Layer):
     # TF version of torch.concat()
     def __init__(self, dimension=1, w=None):
         super().__init__()
+    
         assert dimension == 1, "convert only NCHW to NHWC concat"
         self.d = 3
-
+    
     def call(self, inputs):
         return tf.concat(inputs, self.d)
-
+    
 
 def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
@@ -409,6 +424,7 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[-1 if x == -1 else x + 1] for x in f)
+            print('debug concat : ',c2)
         elif m in [Detect, Segment]:
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
@@ -420,6 +436,7 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
             c2 = ch[f]
 
         tf_m = eval('TF' + m_str.replace('nn.', ''))
+        # if isinstance(tf_m,)
         m_ = keras.Sequential([tf_m(*args, w=model.model[i][j]) for j in range(n)]) if n > 1 \
             else tf_m(*args, w=model.model[i])  # module
 
