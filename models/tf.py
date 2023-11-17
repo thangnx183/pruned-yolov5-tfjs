@@ -150,7 +150,7 @@ class TFFocus(keras.layers.Layer):
 
     def call(self, inputs):  # x(b,w,h,c) -> y(b,w/2,h/2,4c)
         # inputs = inputs / 255  # normalize 0-255 to 0-1
-        inputs = [inputs[:, ::2, ::2, :], inputs[:, 1::2, ::2, :], inputs[:, ::2, 1::2, :], inputs[:, 1::2, 1::2, :]]
+        inputs = [inputs[:, :2, :2, :], inputs[:, 1:2, :2, :], inputs[:, :2, 1:2, :], inputs[:, 1:2, 1:2, :]]
         return self.conv(tf.concat(inputs, 3))
 
 
@@ -437,6 +437,7 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
 
         tf_m = eval('TF' + m_str.replace('nn.', ''))
         # if isinstance(tf_m,)
+        
         m_ = keras.Sequential([tf_m(*args, w=model.model[i][j]) for j in range(n)]) if n > 1 \
             else tf_m(*args, w=model.model[i])  # module
 
@@ -487,6 +488,12 @@ class TFModel:
             y.append(x if m.i in self.savelist else None)  # save output
 
         # Add TensorFlow NMS
+        boxes = self._xywh2xyxy(x[0][..., :4])
+        probs = x[0][:, :, 4:5]
+        classes = x[0][:, :, 5:]
+        scores = probs * classes
+        
+        return (boxes,scores,)
         if tf_nms:
             boxes = self._xywh2xyxy(x[0][..., :4])
             probs = x[0][:, :, 4:5]
@@ -515,7 +522,9 @@ class TFModel:
     def _xywh2xyxy(xywh):
         # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
         x, y, w, h = tf.split(xywh, num_or_size_splits=4, axis=-1)
-        return tf.concat([x - w / 2, y - h / 2, x + w / 2, y + h / 2], axis=-1)
+        # return tf.concat([x - w / 2, y - h / 2, x + w / 2, y + h / 2], axis=-1)
+        return tf.concat([y - h / 2,x - w / 2,y + h / 2,  x + w / 2], axis=-1)
+
 
 
 class AgnosticNMS(keras.layers.Layer):
