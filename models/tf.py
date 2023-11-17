@@ -10,6 +10,17 @@ Export:
     $ python export.py --weights yolov5s.pt --include saved_model pb tflite tfjs
 """
 
+from utils.general import LOGGER, make_divisible, print_args
+from utils.activations import SiLU
+from models.yolo import Detect, Segment
+from models.experimental import MixConv2d, attempt_load
+from models.common import (C3, SPP, SPPF, Bottleneck, BottleneckCSP, C3x, Concat, Conv, CrossConv, DWConv,
+                           DWConvTranspose2d, Focus, autopad)
+from tensorflow import keras
+import torch.nn as nn
+import torch
+import tensorflow as tf
+import numpy as np
 import argparse
 import sys
 from copy import deepcopy
@@ -20,19 +31,6 @@ ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 # ROOT = ROOT.relative_to(Path.cwd())  # relative
-
-import numpy as np
-import tensorflow as tf
-import torch
-import torch.nn as nn
-from tensorflow import keras
-
-from models.common import (C3, SPP, SPPF, Bottleneck, BottleneckCSP, C3x, Concat, Conv, CrossConv, DWConv,
-                           DWConvTranspose2d, Focus, autopad)
-from models.experimental import MixConv2d, attempt_load
-from models.yolo import Detect, Segment
-from utils.activations import SiLU
-from utils.general import LOGGER, make_divisible, print_args
 
 
 class TFBN(keras.layers.Layer):
@@ -70,11 +68,11 @@ class TFConv(keras.layers.Layer):
         super().__init__()
         # print('debug : ',c1,c2,list(w.conv.weight.shape)[:2])
         self.new_shape = []
-        if w is not None :
+        if w is not None:
             self.new_shape = list(w.conv.weight.shape)
             c1 = self.new_shape[1]
-            c2=self.new_shape[0]
-        
+            c2 = self.new_shape[0]
+
         assert g == 1, "TF v2.2 Conv2D does not support 'groups' argument"
         # TensorFlow convolution padding is inconsistent with PyTorch (e.g. k=3 s=2 'SAME' padding)
         # see https://stackoverflow.com/questions/52975843/comparing-conv2d-with-padding-between-tensorflow-and-pytorch
@@ -99,7 +97,7 @@ class TFDWConv(keras.layers.Layer):
     # Depthwise convolution
     def __init__(self, c1, c2, k=1, s=1, p=None, act=True, w=None):
         # ch_in, ch_out, weights, kernel, stride, padding, groups
-        
+
         super().__init__()
         assert c2 % c1 == 0, f'TFDWConv() output={c2} must be a multiple of input={c1} channels'
         conv = keras.layers.DepthwiseConv2D(
@@ -150,7 +148,7 @@ class TFFocus(keras.layers.Layer):
 
     def call(self, inputs):  # x(b,w,h,c) -> y(b,w/2,h/2,4c)
         # inputs = inputs / 255  # normalize 0-255 to 0-1
-        inputs = [inputs[:, :2, :2, :], inputs[:, 1:2, :2, :], inputs[:, :2, 1:2, :], inputs[:, 1:2, 1:2, :]]
+        inputs = [inputs[:, ::2, ::2, :], inputs[:, 1::2, ::2, :], inputs[:, ::2, 1::2, :], inputs[:, 1::2, 1::2, :]]
         return self.conv(tf.concat(inputs, 3))
 
 
@@ -385,13 +383,13 @@ class TFConcat(keras.layers.Layer):
     # TF version of torch.concat()
     def __init__(self, dimension=1, w=None):
         super().__init__()
-    
+
         assert dimension == 1, "convert only NCHW to NHWC concat"
         self.d = 3
-    
+
     def call(self, inputs):
         return tf.concat(inputs, self.d)
-    
+
 
 def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
@@ -424,7 +422,7 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[-1 if x == -1 else x + 1] for x in f)
-            print('debug concat : ',c2)
+            print('debug concat : ', c2)
         elif m in [Detect, Segment]:
             args.append([ch[x + 1] for x in f])
             if isinstance(args[1], int):  # number of anchors
@@ -437,7 +435,7 @@ def parse_model(d, ch, model, imgsz):  # model_dict, input_channels(3)
 
         tf_m = eval('TF' + m_str.replace('nn.', ''))
         # if isinstance(tf_m,)
-        
+
         m_ = keras.Sequential([tf_m(*args, w=model.model[i][j]) for j in range(n)]) if n > 1 \
             else tf_m(*args, w=model.model[i])  # module
 
@@ -492,8 +490,8 @@ class TFModel:
         probs = x[0][:, :, 4:5]
         classes = x[0][:, :, 5:]
         scores = probs * classes
-        
-        return (boxes,scores,)
+
+        return (boxes, scores,)
         if tf_nms:
             boxes = self._xywh2xyxy(x[0][..., :4])
             probs = x[0][:, :, 4:5]
@@ -523,8 +521,7 @@ class TFModel:
         # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
         x, y, w, h = tf.split(xywh, num_or_size_splits=4, axis=-1)
         # return tf.concat([x - w / 2, y - h / 2, x + w / 2, y + h / 2], axis=-1)
-        return tf.concat([y - h / 2,x - w / 2,y + h / 2,  x + w / 2], axis=-1)
-
+        return tf.concat([y - h / 2, x - w / 2, y + h / 2, x + w / 2], axis=-1)
 
 
 class AgnosticNMS(keras.layers.Layer):
