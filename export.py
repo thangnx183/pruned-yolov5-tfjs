@@ -44,6 +44,12 @@ TensorFlow.js:
     $ npm start
 """
 
+from utils.torch_utils import select_device, smart_inference_mode
+from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_version,
+                           check_yaml, colorstr, file_size, get_default_args, print_args, url2file, yaml_save)
+from utils.dataloaders import LoadImages
+from models.yolo import ClassificationModel, Detect, DetectionModel, SegmentationModel
+from models.experimental import attempt_load
 import argparse
 import contextlib
 import json
@@ -67,12 +73,6 @@ if str(ROOT) not in sys.path:
 if platform.system() != 'Windows':
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-from models.experimental import attempt_load
-from models.yolo import ClassificationModel, Detect, DetectionModel, SegmentationModel
-from utils.dataloaders import LoadImages
-from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_version,
-                           check_yaml, colorstr, file_size, get_default_args, print_args, url2file, yaml_save)
-from utils.torch_utils import select_device, smart_inference_mode
 
 MACOS = platform.system() == 'Darwin'  # macOS environment
 
@@ -329,9 +329,10 @@ def export_saved_model(model,
 
     tf_model = TFModel(cfg=model.yaml, model=model, nc=model.nc, imgsz=imgsz)
     im = tf.zeros((batch_size, *imgsz, ch))  # BHWC order for TensorFlow
-    _ = tf_model.predict(im, tf_nms, agnostic_nms, topk_per_class, topk_all, iou_thres, conf_thres)
+    # _ = tf_model.predict(im, tf_nms, agnostic_nms, topk_per_class, topk_all, iou_thres, conf_thres)
     inputs = tf.keras.Input(shape=(*imgsz, ch), batch_size=None if dynamic else batch_size)
     outputs = tf_model.predict(inputs, tf_nms, agnostic_nms, topk_per_class, topk_all, iou_thres, conf_thres)
+    print('debug shape output : ',outputs)
     keras_model = tf.keras.Model(inputs=inputs, outputs=outputs)
     keras_model.trainable = False
     keras_model.summary()
@@ -425,32 +426,73 @@ def export_edgetpu(file, prefix=colorstr('Edge TPU:')):
     return f, None
 
 
+# @try_export
+# def export_tfjs(file, prefix=colorstr('TensorFlow.js:')):
+#     # YOLOv5 TensorFlow.js export
+#     check_requirements('tensorflowjs')
+#     import tensorflowjs as tfjs
+
+#     LOGGER.info(f'\n{prefix} starting export with tensorflowjs {tfjs.__version__}...')
+#     f = str(file).replace('.pt', '_web_model')  # js dir
+#     f_pb = file.with_suffix('.pb')  # *.pb path
+#     f_json = f'{f}/model.json'  # *.json path
+
+#     cmd = f'tensorflowjs_converter --input_format=tf_frozen_model ' \
+#           f'--output_node_names=Identity,Identity_1,Identity_2,Identity_3 {f_pb} {f}'
+#     subprocess.run(cmd.split())
+
+#     json = Path(f_json).read_text()
+#     with open(f_json, 'w') as j:  # sort JSON Identity_* in ascending order
+#         subst = re.sub(
+#             r'{"outputs": {"Identity.?.?": {"name": "Identity.?.?"}, '
+#             r'"Identity.?.?": {"name": "Identity.?.?"}, '
+#             r'"Identity.?.?": {"name": "Identity.?.?"}, '
+#             r'"Identity.?.?": {"name": "Identity.?.?"}}}', r'{"outputs": {"Identity": {"name": "Identity"}, '
+#             r'"Identity_1": {"name": "Identity_1"}, '
+#             r'"Identity_2": {"name": "Identity_2"}, '
+#             r'"Identity_3": {"name": "Identity_3"}}}', json)
+#         j.write(subst)
+#     return f, None
+
 @try_export
-def export_tfjs(file, prefix=colorstr('TensorFlow.js:')):
+def export_tfjs(file, int8, prefix=colorstr('TensorFlow.js:')):
     # YOLOv5 TensorFlow.js export
     check_requirements('tensorflowjs')
     import tensorflowjs as tfjs
 
     LOGGER.info(f'\n{prefix} starting export with tensorflowjs {tfjs.__version__}...')
-    f = str(file).replace('.pt', '_web_model')  # js dir
+    f = str(file).replace('.pt', '_web_prune_066_s_model_int8_320x320_3_anchors_box_score_wo_nms_od')  # js dir
     f_pb = file.with_suffix('.pb')  # *.pb path
     f_json = f'{f}/model.json'  # *.json path
 
-    cmd = f'tensorflowjs_converter --input_format=tf_frozen_model ' \
-          f'--output_node_names=Identity,Identity_1,Identity_2,Identity_3 {f_pb} {f}'
-    subprocess.run(cmd.split())
+    args = [
+        'tensorflowjs_converter',
+        '--input_format=tf_frozen_model',
+        '--quantize_uint8' if int8 else '',
+        '--output_node_names=Identity,Identity_1',
+        str(f_pb),
+        str(f), ]
+    subprocess.run([arg for arg in args if arg], check=True)
 
     json = Path(f_json).read_text()
     with open(f_json, 'w') as j:  # sort JSON Identity_* in ascending order
         subst = re.sub(
             r'{"outputs": {"Identity.?.?": {"name": "Identity.?.?"}, '
-            r'"Identity.?.?": {"name": "Identity.?.?"}, '
-            r'"Identity.?.?": {"name": "Identity.?.?"}, '
             r'"Identity.?.?": {"name": "Identity.?.?"}}}', r'{"outputs": {"Identity": {"name": "Identity"}, '
-            r'"Identity_1": {"name": "Identity_1"}, '
-            r'"Identity_2": {"name": "Identity_2"}, '
-            r'"Identity_3": {"name": "Identity_3"}}}', json)
+            r'"Identity_1": {"name": "Identity_1"}}}', json)
         j.write(subst)
+        
+    # json = Path(f_json).read_text()
+    # with open(f_json, 'w') as j:  # sort JSON Identity_* in ascending order
+    #     subst = re.sub(
+    #         r'{"outputs": {"Identity.?.?": {"name": "Identity.?.?"}, '
+    #         r'"Identity.?.?": {"name": "Identity.?.?"}, '
+    #         r'"Identity.?.?": {"name": "Identity.?.?"}, '
+    #         r'"Identity.?.?": {"name": "Identity.?.?"}}}', r'{"outputs": {"Identity": {"name": "Identity"}, '
+    #         r'"Identity_1": {"name": "Identity_1"}, '
+    #         r'"Identity_2": {"name": "Identity_2"}, '
+    #         r'"Identity_3": {"name": "Identity_3"}}}', json)
+    #     j.write(subst)
     return f, None
 
 
@@ -510,7 +552,7 @@ def run(
         topk_per_class=100,  # TF.js NMS: topk per class to keep
         topk_all=100,  # TF.js NMS: topk for all classes to keep
         iou_thres=0.45,  # TF.js NMS: IoU threshold
-        conf_thres=0.25,  # TF.js NMS: confidence threshold
+        conf_thres=0.1,  # TF.js NMS: confidence threshold
 ):
     t = time.time()
     include = [x.lower() for x in include]  # to lowercase
@@ -526,7 +568,8 @@ def run(
         assert device.type != 'cpu' or coreml, '--half only compatible with GPU export, i.e. use --device 0'
         assert not dynamic, '--half not compatible with --dynamic, i.e. use either --half or --dynamic but not both'
     model = attempt_load(weights, device=device, inplace=True, fuse=True)  # load FP32 model
-
+    # model = model.model
+    # print(model)
     # Checks
     imgsz *= 2 if len(imgsz) == 1 else 1  # expand
     if optimize:
@@ -573,8 +616,8 @@ def run(
                                            im,
                                            file,
                                            dynamic,
-                                           tf_nms=nms or agnostic_nms or tfjs,
-                                           agnostic_nms=agnostic_nms or tfjs,
+                                           tf_nms=False, # nms or agnostic_nms or tfjs
+                                           agnostic_nms=False, #agnostic_nms or tfjs
                                            topk_per_class=topk_per_class,
                                            topk_all=topk_all,
                                            iou_thres=iou_thres,
@@ -588,7 +631,7 @@ def run(
                 f[8], _ = export_edgetpu(file)
             add_tflite_metadata(f[8] or f[7], metadata, num_outputs=len(s_model.outputs))
         if tfjs:
-            f[9], _ = export_tfjs(file)
+            f[9], _ = export_tfjs(file, int8)
     if paddle:  # PaddlePaddle
         f[10], _ = export_paddle(model, im, file, metadata)
 
@@ -614,7 +657,7 @@ def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / 'yolov5s.pt', help='model.pt path(s)')
-    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640, 640], help='image (h, w)')
+    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[360, 360], help='image (h, w)')
     parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--half', action='store_true', help='FP16 half-precision export')
@@ -631,12 +674,12 @@ def parse_opt():
     parser.add_argument('--agnostic-nms', action='store_true', help='TF: add agnostic NMS to model')
     parser.add_argument('--topk-per-class', type=int, default=100, help='TF.js NMS: topk per class to keep')
     parser.add_argument('--topk-all', type=int, default=100, help='TF.js NMS: topk for all classes to keep')
-    parser.add_argument('--iou-thres', type=float, default=0.45, help='TF.js NMS: IoU threshold')
-    parser.add_argument('--conf-thres', type=float, default=0.25, help='TF.js NMS: confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.4, help='TF.js NMS: IoU threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.15, help='TF.js NMS: confidence threshold')
     parser.add_argument(
         '--include',
         nargs='+',
-        default=['torchscript'],
+        default=['tfjs'],
         help='torchscript, onnx, openvino, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle')
     opt = parser.parse_args()
     print_args(vars(opt))
