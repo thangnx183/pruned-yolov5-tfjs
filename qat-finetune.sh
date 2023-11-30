@@ -1,0 +1,1 @@
+python qat-finetune.py --batch-size 72 --img 320 --data data/coco-old-cp.yaml --hyp data/hyps/hyp.finetune-qat.yaml --weights runs/train/prune-72-finetune-carpart-add-car-v2-anchor-tune-3-old-data/weights/best.pt  --sync-bn --device 2 --name qat-prune-72-finetune-carpart-add-car-v2-anchor-tune-3-old-data

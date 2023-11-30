@@ -1,0 +1,1 @@
+python fine-tune.py --batch-size 144 --img 320 --data data/coco-old-cp.yaml --hyp data/hyps/hyp.scratch-high.yaml --weights runs/train/carpart-add-car-v2-anchor-tune-3-s-model-od/weights/best-prune-066.pt --sync-bn --device 2 --name prune-66-finetune-carpart-add-car-v2-anchor-tune-3-od-od
