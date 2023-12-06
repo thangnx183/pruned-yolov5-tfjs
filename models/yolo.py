@@ -105,6 +105,54 @@ class Segment(Detect):
         x = self.detect(self, x)
         return (x, p) if self.training else (x[0], p) if self.export else (x[0], p, x[1])
 
+class ZoominHead(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Conv2d(229,1,1)
+        self.act_conv = nn.SiLU() 
+        self.pool = nn.AvgPool2d(2,2)
+                
+        self.ln1 = nn.Linear(25,25)
+        self.act1 = nn.SiLU()
+        self.drop1 = nn.Dropout(0.1)
+        
+        self.ln2 = nn.Linear(25,2)
+    
+    def forward(self,x):
+        x = self.act_conv(self.conv(x))
+        x = self.pool(x)
+        
+        x = torch.flatten(x,1)
+        x = self.drop1(self.act1(self.ln1(x)))
+        
+        return self.ln2(x)
+
+class MultiHead(Detect):
+    def __init__(self, detect_module,zoomin_module):
+        super().__init__(detect_module.nc, detect_module.anchors, detect_module.ch, detect_module.inplace)
+        self.detect = Detect.forward
+        self.m = detect_module.m
+        self.nl = detect_module.nl
+        self.na = detect_module.na
+        self.grid = detect_module.grid
+        self.anchor_grid = detect_module.anchor_grid
+        self.stride = detect_module.stride
+        
+        self.zoomin_head = zoomin_module
+        self.sofmax = torch.nn.Softmax(dim=1)
+        
+        self.f = detect_module.f
+        self.i = detect_module.i
+        self.type  = str(type(self))[8:-2].replace('__main__.','')
+        self.np = detect_module.np + sum([n.numel() for n in zoomin_module.parameters()])
+        
+
+    def forward(self, x):
+        p = self.zoomin_head(x[-1])
+        p = self.sofmax(p)[:,0] 
+        
+        x = self.detect(self,x)
+        return x[0], p
 
 class BaseModel(nn.Module):
     # YOLOv5 base model
