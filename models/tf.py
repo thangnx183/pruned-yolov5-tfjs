@@ -9,6 +9,8 @@ Usage:
 Export:
     $ python export.py --weights yolov5s.pt --include saved_model pb tflite tfjs
 """
+import sys
+sys.path.insert(1, '/workspace/share')
 
 from utils.general import LOGGER, make_divisible, print_args
 from utils.activations import SiLU
@@ -286,20 +288,28 @@ class TFDetect(keras.layers.Layer):
     # TF YOLOv5 Detect layer
     def __init__(self, nc=80, anchors=(), ch=(), imgsz=(640, 640), w=None):  # detection layer
         super().__init__()
-        self.stride = tf.convert_to_tensor(w.stride.numpy(), dtype=tf.float32)
+        # print('tride : ',w.stride)
+        if w is not None:
+            self.stride = tf.convert_to_tensor(w.stride.numpy(), dtype=tf.float32)
+        
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [tf.zeros(1)] * self.nl  # init grid
-        self.anchors = tf.convert_to_tensor(w.anchors.numpy(), dtype=tf.float32)
-        self.anchor_grid = tf.reshape(self.anchors * tf.reshape(self.stride, [self.nl, 1, 1]), [self.nl, 1, -1, 1, 2])
-        self.m = [TFConv2d(x, self.no * self.na, 1, w=w.m[i]) for i, x in enumerate(ch)]
+        
+        # print('anchor ',self.anchors)
+        if w is not None:
+            self.anchors = tf.convert_to_tensor(w.anchors.numpy(), dtype=tf.float32)
+            self.anchor_grid = tf.reshape(self.anchors * tf.reshape(self.stride, [self.nl, 1, 1]), [self.nl, 1, -1, 1, 2])
+            self.m = [TFConv2d(x, self.no * self.na, 1, w=w.m[i]) for i, x in enumerate(ch)]
         self.training = False  # set to False after building model
         self.imgsz = imgsz
-        for i in range(self.nl):
-            ny, nx = self.imgsz[0] // self.stride[i], self.imgsz[1] // self.stride[i]
-            self.grid[i] = self._make_grid(nx, ny)
+        
+        if w is not None:
+            for i in range(self.nl):
+                ny, nx = self.imgsz[0] // self.stride[i], self.imgsz[1] // self.stride[i]
+                self.grid[i] = self._make_grid(nx, ny)
 
     def call(self, inputs):
         z = []  # inference output
@@ -484,14 +494,19 @@ class TFModel:
 
             x = m(x)  # run
             y.append(x if m.i in self.savelist else None)  # save output
-
+        # print([i for i in y])
         # Add TensorFlow NMS
         boxes = self._xywh2xyxy(x[0][..., :4])
         probs = x[0][:, :, 4:5]
         classes = x[0][:, :, 5:]
         scores = probs * classes
+        
+        if len(x) > 1:
+            zoomin = x[1]
+            return (boxes, scores,zoomin)
 
         return (boxes, scores,)
+    
         if tf_nms:
             boxes = self._xywh2xyxy(x[0][..., :4])
             probs = x[0][:, :, 4:5]
