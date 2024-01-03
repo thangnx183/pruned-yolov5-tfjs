@@ -502,7 +502,7 @@ class TFModel:
         scores = probs * classes
         
         if len(x) > 1:
-            zoomin = x[0]
+            zoomin = x[1]
             return (boxes, scores,zoomin)
 
         return (boxes, scores,)
