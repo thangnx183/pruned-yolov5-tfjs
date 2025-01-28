@@ -2,8 +2,9 @@
 This repo extend the work from paper 'Redundant Feature Pruning for Accelerated Inference in Deep Neural Networks' Babajide O. Ayindea, Tamer Inanca, Jacek M. Zuradaa.  
 Contribution of this work:  
 - apply proposed pruning method from paper for all yolov5 layer
-- fine-tuned pruned model to regain accuracy
-- custom Tensorflowjs class to deploy on web 
+- fine-tuned pruned model to regain accuracy (in my case, pruned half parameters of yolov5n without losing in accuracy)
+- custom Tensorflowjs class to deploy on web: seprate nms module from model graph and execute in cpu for faster inference
+- end2end pipeline from train - prune - finetune - convert and post training quantization tfjs - deploy tfjs
 
 ## Pruning 
 ```
@@ -25,4 +26,6 @@ python export.py --weight path/to/pruned/checkpoint --int8 --includes tfjs
 
 ## Custom Yolov5js
 - Move NMS separate from model graph, nms will excecute by cpu for faster inference ([detail](tfjs-object-detection/src/yolo.tsx))
+- Link demo : [here](https://thangnx183.github.io/simple-tfjs-demo/)
+
 
