@@ -19,3 +19,10 @@ python fine-tune.py --batch-size 144 --img 320 --data data/coco-old-cp.yaml --hy
 - Load pruned model checkpoint as pretrain and retrain model on same dataset
 
 ## Convert to TensorflowJs 
+```
+python export.py --weight path/to/pruned/checkpoint --int8 --includes tfjs
+```
+
+## Custom Yolov5js
+- Move NMS separate from model graph, nms will excecute by cpu for faster inference ([detail](tfjs-object-detection/src/yolo.tsx))
+
